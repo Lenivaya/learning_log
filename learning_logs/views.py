@@ -1,10 +1,16 @@
-from django.http import HttpResponseRedirect
+from django.contrib.auth.decorators import login_required
+from django.http import Http404, HttpResponseRedirect
 from django.shortcuts import render
 from django.urls import reverse
-from django.contrib.auth.decorators import login_required
 
 from .forms import EntryForm, TopicForm
 from .models import Entry, Topic
+
+
+def check_topic_owner(owner, user):
+    if owner != user:
+        return False
+    return True
 
 
 def index(request):
@@ -24,9 +30,12 @@ def topics(request):
 def topic(request, topic_id):
     """Diplsay topic and all post`s"""
     topic = Topic.objects.get(id=topic_id)
-    entries = topic.entry_set.order_by('-data_added')
-    context = {'topic': topic, 'entries': entries}
-    return render(request, 'learning_logs/topic.html', context)
+    if check_topic_owner(topic.owner, request.user):
+        entries = topic.entry_set.order_by('-date_added')
+        context = {'topic': topic, 'entries': entries}
+        return render(request, 'learning_logs/topic.html', context)
+    else:
+        raise Http404
 
 
 @login_required
@@ -37,7 +46,9 @@ def new_topic(request):
     else:
         form = TopicForm(request.POST)
         if form.is_valid():
-            form.save()
+            new_topic = form.save(commit=False)
+            new_topic.owner = request.user
+            new_topic.save()
             return HttpResponseRedirect(reverse('learning_logs:topics'))
 
     context = {"form": form}
@@ -48,17 +59,19 @@ def new_topic(request):
 def new_entry(request, topic_id):
     """Adds a new entry on a specific topic"""
     topic = Topic.objects.get(id=topic_id)
-
-    if request.method != 'POST':
-        form = EntryForm()
+    if check_topic_owner(topic.owner, request.user):
+        if request.method != 'POST':
+            form = EntryForm()
+        else:
+            form = EntryForm(data=request.POST)
+            if form.is_valid():
+                new_entry = form.save(commit=False)
+                new_entry.topic = topic
+                new_entry.save()
+                return HttpResponseRedirect(reverse('learning_logs:topic',
+                                                    args=[topic_id]))
     else:
-        form = EntryForm(data=request.POST)
-        if form.is_valid():
-            new_entry = form.save(commit=False)
-            new_entry.topic = topic
-            new_entry.save()
-            return HttpResponseRedirect(reverse('learning_logs:topic',
-                                                args=[topic_id]))
+        raise Http404
 
     context = {'topic': topic, 'form': form}
     return render(request, 'learning_logs/new_entry.html', context)
@@ -69,15 +82,17 @@ def edit_entry(request, entry_id):
     """Edits entry"""
     entry = Entry.objects.get(id=entry_id)
     topic = entry.topic
-
-    if request.method != 'POST':
-        form = EntryForm(instance=entry)
+    if check_topic_owner(topic.owner, request.user):
+        if request.method != 'POST':
+            form = EntryForm(instance=entry)
+        else:
+            form = EntryForm(instance=entry, data=request.POST)
+            if form.is_valid():
+                form.save()
+                return HttpResponseRedirect(reverse('learning_logs:topic',
+                                                    args=[topic.id]))
     else:
-        form = EntryForm(instance=entry, data=request.POST)
-        if form.is_valid():
-            form.save()
-            return HttpResponseRedirect(reverse('learning_logs:topic',
-                                                args=[topic.id]))
+        raise Http404
 
     context = {'entry': entry, 'topic': topic, 'form': form}
     return render(request, "learning_logs/edit_entry.html", context)
