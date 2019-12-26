@@ -29,7 +29,7 @@ def topics(request):
 @login_required
 def topic(request, topic_id):
     """Diplsay topic and all post`s"""
-    topic = get_object_or_404(Topic, id=topic_id)
+    topic = Topic.objects.get(id=topic_id)
     if check_topic_owner(topic.owner, request.user):
         entries = topic.entry_set.order_by('-date_added')
         context = {'topic': topic, 'entries': entries}
@@ -58,7 +58,7 @@ def new_topic(request):
 @login_required
 def new_entry(request, topic_id):
     """Adds a new entry on a specific topic"""
-    topic = get_object_or_404(Topic, id=topic_id)
+    topic = Topic.objects.get(id=topic_id)
     if check_topic_owner(topic.owner, request.user):
         if request.method != 'POST':
             form = EntryForm()
